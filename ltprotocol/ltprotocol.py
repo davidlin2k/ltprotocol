@@ -64,10 +64,20 @@ class LTProtocol():
 
     def unpack_received_msg(self, type_val, body):
         """Returns the next fully-received message from sock, or None if the type is unknown."""
-        if self.msg_types.has_key(type_val):
-            return self.msg_types[type_val].unpack(body)
+        if type_val in self.msg_types:
+            logging.debug("LTProtocol: Received message type %u" % type_val)
+            
+            try:
+                return self.msg_types[type_val].unpack(body)
+            except Exception as e:
+                logging.error("LTProtocol: Error unpacking message of type %u: %s" % (type_val, str(e)))
+
+                import traceback
+                traceback.print_exc()
+                return None
         else:
-            return None # unknown message type
+            logging.error("LTProtocol: Unknown message type %u" % type_val)
+            return None
 
 class LTTwistedProtocol(Protocol):
     """A Twisted protocol whose messages begin with length and type."""
@@ -75,8 +85,8 @@ class LTTwistedProtocol(Protocol):
     def __init__(self):
         """Creates a """
         self.factory = None  # set when used by a factory
-        self.buf_accum = ''
-        self.packet = ""
+        self.buf_accum = b''
+        self.packet = b""
         self.plen = 0
         self.connected = False
 
@@ -111,8 +121,18 @@ class LTTwistedProtocol(Protocol):
                 self.plen -= lenNeeded
 
                 type_val = struct.unpack(type_fmt, buf[len_fmt_sz:tot_sz])[0]
+                logging.debug("LTTwistedProtocol: Received message type %u" % type_val)
+
                 lt_msg = self.factory.lt_protocol.unpack_received_msg(type_val, buf[tot_sz:])
-                self.factory.recv_callback(self, lt_msg)
+                
+                # Call the callback with explicit try/except to catch any errors
+                try:
+                    self.factory.recv_callback(self, lt_msg)
+                except Exception as e:
+                    logging.error("LTTwistedProtocol: Error in recv_callback: %s" % str(e))
+                    
+                    import traceback
+                    traceback.print_exc()
             else:
                 # not enough bytes for a full packet yet
                 break
@@ -170,8 +190,8 @@ class LTTwistedClient(ReconnectingClientFactory):
         """
         self.lt_protocol = lt_protocol
         self.recv_callback = recv_callback
-        self.new_conn_callback = new_conn_callback if new_conn_callback else lambda p : None
-        self.lost_conn_callback = lost_conn_callback if lost_conn_callback else lambda p : None
+        self.new_conn_callback = new_conn_callback if new_conn_callback is not None else lambda p : None
+        self.lost_conn_callback = lost_conn_callback if lost_conn_callback is not None else lambda p : None
         self.ip = None
         self.port = None
         self.packet = ""
@@ -232,8 +252,8 @@ class LTTwistedServer(Factory):
         """
         self.lt_protocol = lt_protocol
         self.recv_callback = recv_callback
-        self.new_conn_callback = new_conn_callback if new_conn_callback else lambda p : None
-        self.lost_conn_callback = lost_conn_callback if lost_conn_callback else lambda p : None
+        self.new_conn_callback = new_conn_callback if new_conn_callback is not None else lambda p : None
+        self.lost_conn_callback = lost_conn_callback if lost_conn_callback is not None else lambda p : None
         self.connections = []
         self.numProtocols = 0
         self.verbose = verbose
