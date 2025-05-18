@@ -65,8 +65,6 @@ class LTProtocol():
     def unpack_received_msg(self, type_val, body):
         """Returns the next fully-received message from sock, or None if the type is unknown."""
         if type_val in self.msg_types:
-            logging.debug("LTProtocol: Received message type %u" % type_val)
-            
             try:
                 return self.msg_types[type_val].unpack(body)
             except Exception as e:
@@ -121,8 +119,7 @@ class LTTwistedProtocol(Protocol):
                 self.plen -= lenNeeded
 
                 type_val = struct.unpack(type_fmt, buf[len_fmt_sz:tot_sz])[0]
-                logging.debug("LTTwistedProtocol: Received message type %u" % type_val)
-
+                
                 lt_msg = self.factory.lt_protocol.unpack_received_msg(type_val, buf[tot_sz:])
                 
                 # Call the callback with explicit try/except to catch any errors
