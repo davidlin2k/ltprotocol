@@ -10,13 +10,15 @@ LTTwistedServer and LTTwistedClient to create a server or client.
 import logging
 import struct
 
-from twisted.internet.protocol  import Protocol, ReconnectingClientFactory, Factory
-from twisted.internet           import reactor
+from twisted.internet.protocol import Protocol, ReconnectingClientFactory, Factory
+from twisted.internet import reactor
+
 
 class LTMessage:
     """This class should be overridden to define specific messages which begin
-       with length and type.
+    with length and type.
     """
+
     @staticmethod
     def get_type():
         """Returns the type identifying this message (a unique integer)."""
@@ -36,10 +38,11 @@ class LTMessage:
         # Must be overridden by subclasses to return the unpacked message.
         pass
 
-class LTProtocol():
+
+class LTProtocol:
     """Defines a protocol whose messages are in the form length, type, and body."""
 
-    def __init__(self, msg_types, len_type='H', type_type='B'):
+    def __init__(self, msg_types, len_type="H", type_type="B"):
         """Creates an LTProtocol which recognizes a the specified list of LTMessage classes.
 
         @param msg_types  list of LTMessage classes which this protocol includes
@@ -58,7 +61,7 @@ class LTProtocol():
         @param lmt  packed byte-string representing the message body
         """
         body = lmt.pack()
-        fmt = '> ' + self.len_type + self.type_type
+        fmt = "> " + self.len_type + self.type_type
         sz = struct.calcsize(fmt) + len(body)
         return struct.pack(fmt, sz, lmt.get_type()) + body
 
@@ -68,22 +71,28 @@ class LTProtocol():
             try:
                 return self.msg_types[type_val].unpack(body)
             except Exception as e:
-                logging.error("LTProtocol: Error unpacking message of type %u: %s" % (type_val, str(e)))
+                logging.error(
+                    "LTProtocol: Error unpacking message of type %u: %s"
+                    % (type_val, str(e))
+                )
 
                 import traceback
+
                 traceback.print_exc()
                 return None
         else:
             logging.error("LTProtocol: Unknown message type %u" % type_val)
             return None
 
+
 class LTTwistedProtocol(Protocol):
     """A Twisted protocol whose messages begin with length and type."""
+
     # live connections a server for this protocol is serving
     def __init__(self):
-        """Creates a """
+        """Creates a"""
         self.factory = None  # set when used by a factory
-        self.buf_accum = b''
+        self.buf_accum = b""
         self.packet = b""
         self.plen = 0
         self.connected = False
@@ -91,7 +100,9 @@ class LTTwistedProtocol(Protocol):
     def connectionMade(self):
         # add function to transport so it is easy to send an LTProtocol message with it
         self.connected = True
-        self.send = lambda ltm : self.transport.write(self.factory.lt_protocol.pack_with_header(ltm))
+        self.send = lambda ltm: self.transport.write(
+            self.factory.lt_protocol.pack_with_header(ltm)
+        )
         self.factory.new_conn_callback(self)
 
     def connectionLost(self, reason):
@@ -119,16 +130,21 @@ class LTTwistedProtocol(Protocol):
                 self.plen -= lenNeeded
 
                 type_val = struct.unpack(type_fmt, buf[len_fmt_sz:tot_sz])[0]
-                
-                lt_msg = self.factory.lt_protocol.unpack_received_msg(type_val, buf[tot_sz:])
-                
+
+                lt_msg = self.factory.lt_protocol.unpack_received_msg(
+                    type_val, buf[tot_sz:]
+                )
+
                 # Call the callback with explicit try/except to catch any errors
                 try:
                     self.factory.recv_callback(self, lt_msg)
                 except Exception as e:
-                    logging.error("LTTwistedProtocol: Error in recv_callback: %s" % str(e))
-                    
+                    logging.error(
+                        "LTTwistedProtocol: Error in recv_callback: %s" % str(e)
+                    )
+
                     import traceback
+
                     traceback.print_exc()
             else:
                 # not enough bytes for a full packet yet
@@ -137,6 +153,7 @@ class LTTwistedProtocol(Protocol):
     def __str__(self):
         """Returns a string representation of the peer's information."""
         return str(self.transport.getPeer())
+
 
 class LTTwistedServerProtocol(LTTwistedProtocol):
     def __init__(self, verbose=True):
@@ -167,13 +184,20 @@ class LTTwistedServerProtocol(LTTwistedProtocol):
         # let the super-class cleanup
         LTTwistedProtocol.connectionLost(self, reason)
 
+
 class LTTwistedClient(ReconnectingClientFactory):
     """A twisted-based client for protocols which begin with length and type."""
+
     protocol = LTTwistedProtocol
 
-    def __init__(self, lt_protocol, recv_callback,
-                 new_conn_callback=None, lost_conn_callback=None,
-                 verbose=True):
+    def __init__(
+        self,
+        lt_protocol,
+        recv_callback,
+        new_conn_callback=None,
+        lost_conn_callback=None,
+        verbose=True,
+    ):
         """Creates an Twisted client factory for the specified lt_protocol.
 
         @param lt_protocol    the LTProtocol protocol class the server uses to communicate
@@ -187,8 +211,12 @@ class LTTwistedClient(ReconnectingClientFactory):
         """
         self.lt_protocol = lt_protocol
         self.recv_callback = recv_callback
-        self.new_conn_callback = new_conn_callback if new_conn_callback is not None else lambda p : None
-        self.lost_conn_callback = lost_conn_callback if lost_conn_callback is not None else lambda p : None
+        self.new_conn_callback = (
+            new_conn_callback if new_conn_callback is not None else lambda p: None
+        )
+        self.lost_conn_callback = (
+            lost_conn_callback if lost_conn_callback is not None else lambda p: None
+        )
         self.ip = None
         self.port = None
         self.packet = ""
@@ -202,14 +230,19 @@ class LTTwistedClient(ReconnectingClientFactory):
 
     def startedConnecting(self, _):
         if self.verbose:
-            logging.debug('Trying to connect to LT server at %s:%s' % (str(self.ip), str(self.port)))
+            logging.debug(
+                "Trying to connect to LT server at %s:%s"
+                % (str(self.ip), str(self.port))
+            )
 
     def buildProtocol(self, _):
         # reset the packet buffer whenever we renew the connection
         self.packet = ""
         self.plen = 0
         if self.verbose:
-            logging.info('Connected to the server at %s:%s' % (str(self.ip), str(self.port)))
+            logging.info(
+                "Connected to the server at %s:%s" % (str(self.ip), str(self.port))
+            )
 
         # once we successfully connect, reset the retry wait time
         self.resetDelay()
@@ -219,23 +252,30 @@ class LTTwistedClient(ReconnectingClientFactory):
 
     def clientConnectionLost(self, connector, reason):
         if self.verbose:
-            fmt = 'Connection to the server at %s:%s lost: %s'
+            fmt = "Connection to the server at %s:%s lost: %s"
             logging.info(fmt % (str(self.ip), str(self.port), reason.getErrorMessage()))
         ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
 
     def clientConnectionFailed(self, connector, reason):
         if self.verbose:
-            fmt = 'Connection to the server at %s:%s failed: %s'
+            fmt = "Connection to the server at %s:%s failed: %s"
             logging.info(fmt % (str(self.ip), str(self.port), reason.getErrorMessage()))
         ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
 
+
 class LTTwistedServer(Factory):
     """A twisted-based server for protocols which begin with length and type."""
+
     protocol = LTTwistedServerProtocol
 
-    def __init__(self, lt_protocol, recv_callback,
-                 new_conn_callback=None, lost_conn_callback=None,
-                 verbose=True):
+    def __init__(
+        self,
+        lt_protocol,
+        recv_callback,
+        new_conn_callback=None,
+        lost_conn_callback=None,
+        verbose=True,
+    ):
         """Creates an Twisted server factory for the specified lt_protocol.
 
         @param lt_protocol    the LTProtocol protocol class the server uses to communicate
@@ -249,8 +289,12 @@ class LTTwistedServer(Factory):
         """
         self.lt_protocol = lt_protocol
         self.recv_callback = recv_callback
-        self.new_conn_callback = new_conn_callback if new_conn_callback is not None else lambda p : None
-        self.lost_conn_callback = lost_conn_callback if lost_conn_callback is not None else lambda p : None
+        self.new_conn_callback = (
+            new_conn_callback if new_conn_callback is not None else lambda p: None
+        )
+        self.lost_conn_callback = (
+            lost_conn_callback if lost_conn_callback is not None else lambda p: None
+        )
         self.connections = []
         self.numProtocols = 0
         self.verbose = verbose
@@ -268,7 +312,7 @@ class LTTwistedServer(Factory):
         for conn in self.connections:
             conn.transport.write(buf)
             if self.verbose:
-                logging.debug('  sent %s' % str(ltm))
+                logging.debug("  sent %s" % str(ltm))
 
     def send_msg_to_client(self, conn, ltm):
         """Sends a LTMessage to the specified client connection."""
